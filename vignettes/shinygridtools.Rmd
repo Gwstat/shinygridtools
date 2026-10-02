@@ -1,0 +1,283 @@
+---
+title: "Entering many records at once"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Entering many records at once}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+A [shinyformtools](https://github.com/Gwstat/shinyformtools) form describes one
+record at a time: a dialog opens, the user fills it in, one row is stored.
+Some data does not come in single records. A bird survey visit produces a
+dozen numbers at once, one per species and distance band; sending survey
+teams out means handing out equipment from a shared store. shinygridtools
+adds two tools for that, built on the same form description:
+
+1. **the grid**, which shows a group of records as a spreadsheet and saves
+   what the user changed;
+2. **the basket**, a field whose items come from a stock that every record
+   shares.
+
+This vignette walks through both and shows what they store. The database
+parts below run as written, against a throwaway SQLite file; the app parts
+are shown as code.
+
+```{r library, message = FALSE}
+library(shinygridtools)  # attaches shinyformtools as well
+```
+
+## 1. The records behind a grid
+
+A grid needs nothing beyond an ordinary form. Here every stored record is one
+species at one site on one visit, with two counts:
+
+```{r form}
+db <- db_sqlite(tempfile(fileext = ".sqlite"))
+
+counts <- form(
+  form_id = "counts",
+  table_name = "counts",
+  db = db,
+  fields = list(
+    form_field(id = "visit", label = "Visit"),
+    form_field(id = "site", label = "Site"),
+    form_field(id = "species", label = "Species"),
+    form_field(id = "adults", label = "Adults", input_type = "numericInput"),
+    form_field(id = "juveniles", label = "Juveniles", input_type = "numericInput")
+  )
+)
+
+conn <- db_connect(db)
+init_db(counts, conn = conn)
+```
+
+`grid_server()` takes three things from it: the **group** that one grid shows
+(`visit` and `site`), the **row key** (`species`, one grid row per species)
+and the **columns** (by default every numeric field that is neither group nor
+key, here `adults` and `juveniles`).
+
+## 2. The grid in an app
+
+```{r app, eval = FALSE}
+ui <- fluidPage(
+  selectInput("site", "Site", c("Pond", "Meadow")),
+  grid_ui("counts", label = "Birds per species")
+)
+
+server <- function(input, output, session) {
+  grid_server(
+    "counts", counts,
+    rows = c("Blackbird", "Robin", "Great tit"),
+    key = "species",
+    group = reactive(list(visit = "1", site = input$site)),
+    user = "demo"
+  )
+}
+
+shinyApp(ui, server)
+```
+
+Enter and the arrow keys walk the cells, a block copied from a spreadsheet is
+pasted from the focused cell onwards, and sums follow the entries. Half a
+second after the last keystroke the grid saves. Choosing another site shows
+that site's records.
+
+## 3. What a save does
+
+A save writes only what the user changed, through
+`shinyformtools::upsert_records()`, in one transaction. A row that gets values
+is inserted, a changed row updated, a row the user emptied soft-deleted. The
+grid calls it for you; this is what it hands over when someone fills in two
+species at the pond:
+
+```{r save}
+upsert_records(
+  counts,
+  list(
+    list(visit = "1", site = "Pond", species = "Blackbird", adults = 4, juveniles = 10),
+    list(visit = "1", site = "Pond", species = "Robin", adults = 2)
+  ),
+  key = c("visit", "site", "species"),
+  conn = conn, user = "ada"
+)
+
+fetch_records(counts, conn = conn)[, c("site", "species", "adults", "juveniles")]
+```
+
+Each write is an ordinary record write: validated against the form's rules,
+audit-logged, visible in a `form_server()` table of the same form.
+
+### Two people, one site
+
+The grid remembers what it showed and sends it along as `expected`. When
+someone else changed a cell in the meantime, that record is not overwritten:
+
+```{r conflict}
+# Bob corrects the blackbirds while Ada still sees 4 adults.
+invisible(update_record(counts, list(adults = 5), record_id = 1, conn = conn, user = "bob"))
+
+result <- tryCatch(
+  upsert_records(
+    counts,
+    list(list(visit = "1", site = "Pond", species = "Blackbird", adults = 6)),
+    key = c("visit", "site", "species"),
+    expected = list(list(adults = 4)),
+    conn = conn, user = "ada"
+  ),
+  sft_edit_conflict = function(e) conditionMessage(e)
+)
+result
+
+fetch_records(counts, conn = conn)$adults
+```
+
+In the app, the grid takes such a row out, stores the others, tells the user
+which row someone else changed and shows the current values. With `poll` (on
+by default, every 3 seconds) it also shows what others saved, cell by cell,
+without touching the cell the user is typing in.
+
+## 4. One record per cell
+
+Data is often stored long: one record per species *and* distance band,
+holding a single number. `col_key` and `value` switch the grid to that
+layout; the columns are then the values of `col_key`:
+
+```{r long, eval = FALSE}
+grid_server(
+  "bands", observations,
+  rows = c("Blackbird", "Robin"), key = "species",
+  cols = c("Under 25 m" = "1", "25 to 100 m" = "2", "Over 100 m" = "3"),
+  col_key = "band", value = "count",
+  group = reactive(list(visit = input$visit, site = input$site))
+)
+```
+
+An emptied cell soft-deletes its record; two people typing into different
+cells of one row never collide.
+
+## 5. A grid inside one record
+
+Sometimes the whole table belongs to one record: the tally sheet of one
+visit. `grid_input` is then a field type, and the matrix is stored as one
+JSON text with its row and column names:
+
+```{r grid-field}
+sheets <- form(
+  form_id = "sheets",
+  table_name = "sheets",
+  db = db,
+  fields = list(
+    form_field(id = "site", label = "Site"),
+    form_field(
+      id = "tally", label = "Tally", input_type = "grid_input",
+      args = list(rows = c("Blackbird", "Robin"), cols = c("Adults", "Juveniles"))
+    )
+  )
+)
+init_db(sheets, conn = conn)
+
+tally <- matrix(
+  c(12, 7, 4, 3), nrow = 2,
+  dimnames = list(c("Blackbird", "Robin"), c("Adults", "Juveniles"))
+)
+invisible(insert_record(sheets, list(site = "Pond", tally = tally), conn = conn))
+
+fetch_records(sheets, conn = conn)$tally
+```
+
+Stored by name, the grid survives a change of `rows`: reordered rows land in
+the right place, and rows the field no longer lists are still shown while they
+hold numbers.
+
+## 6. The basket and its stock
+
+A basket field holds items from a palette: dragged or clicked in, counted
+with `+` and `-`, marked as kept on site. The palette is another form,
+named with `cart_catalog()`:
+
+```{r basket}
+equipment <- form(
+  form_id = "equipment", table_name = "equipment", db = db,
+  fields = list(
+    form_field(id = "code", label = "Code", unique = TRUE),
+    form_field(id = "name", label = "Name"),
+    form_field(id = "stock", label = "Stock", input_type = "numericInput")
+  )
+)
+
+teams <- form(
+  form_id = "teams", table_name = "teams", db = db,
+  fields = list(
+    form_field(id = "team", label = "Team"),
+    form_field(
+      id = "kit", label = "Equipment", input_type = "cart_input",
+      args = list(catalog = cart_catalog(equipment, id = "code", label = "name", stock = "stock"))
+    )
+  )
+)
+
+init_db(equipment, conn = conn)
+init_db(teams, conn = conn)
+invisible(insert_record(equipment, list(code = "scope", name = "Spotting scope", stock = 3), conn = conn))
+```
+
+The stock is shared by every basket that names the catalog. A save that
+would take more than is left is refused, from the dialog, from the board and
+from scripts alike:
+
+```{r stock}
+invisible(insert_record(teams, list(
+  team = "Pond team",
+  kit = data.frame(item = "scope", n = 2)
+), conn = conn))
+
+tryCatch(
+  insert_record(teams, list(
+    team = "Meadow team",
+    kit = data.frame(item = "scope", n = 2)
+  ), conn = conn),
+  sft_validation_error = function(e) conditionMessage(e)
+)
+```
+
+Lines kept on site (`on_site = TRUE`) do not count against the stock, and
+deleting a record frees what it held. On MariaDB two people taking the last
+piece at the same moment are serialised by a lock per stock, so only one of
+them gets it.
+
+## 7. The board
+
+`cart_board_ui()` (or `form_ui(show_board = TRUE)` of shinyformtools) puts
+every record next to the stock. One drag moves one piece: from the stock to a
+team, between teams, or back. Each move is saved at once, with the same
+checks as the dialog.
+
+```{r board, eval = FALSE}
+ui <- fluidPage(
+  form_ui("teams", title = "Survey teams", show_board = TRUE)
+)
+
+server <- function(input, output, session) {
+  form_server("teams", teams, user = "demo")
+}
+```
+
+```{r cleanup, include = FALSE}
+db_disconnect(conn)
+```
+
+## Where to go next
+
+- `run_example("app_grid_entry")` is a bird survey: counts per site, species
+  and distance band on two visits, with the first visit's counts greyed
+  inside the cells as a hint.
+- `run_example("app_cart_input")` lends equipment to survey teams from a
+  shared store, with the board above the table.
+- `?grid_module`, `?grid_input` and `?cart_input` document every argument.
+- The shinyformtools vignette explains the form description, the database it
+  produces and how to read it without the app.

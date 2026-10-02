@@ -1,0 +1,40 @@
+Package: shinygridtools
+Title: Grid Entry and Baskets for 'shinyformtools' Forms
+Version: 0.3.2
+Authors@R:
+    person("Georg", "Wiegleb", , "gwiestat@gmail.com", role = c("aut", "cre"))
+Description: Enter many related records of a 'shinyformtools' form at once in
+    a spreadsheet-like grid. 'grid_input()' is a grid of number cells as a
+    'Shiny' input and as a field type: keyboard navigation, block paste from a
+    spreadsheet, live sums. 'grid_server()' shows the records of a group as a
+    grid, one record per row (wide) or per cell (long), and saves the cells
+    the user changed in one transaction, with a per-cell check against other
+    users' changes and their entries shown every few seconds. 'cart_input()'
+    is a basket field: items dragged from a palette whose stock is shared
+    by every basket, checked on every save, with a board that moves pieces
+    between records. Built on the extension API of 'shinyformtools'.
+URL: https://github.com/Gwstat/shinygridtools
+BugReports: https://github.com/Gwstat/shinygridtools/issues
+License: MIT + file LICENSE
+Depends:
+    R (>= 4.1.0),
+    shinyformtools (>= 0.10.0)
+Encoding: UTF-8
+Config/roxygen2/markdown: TRUE
+Config/testthat/edition: 3
+Imports:
+    htmltools,
+    jsonlite,
+    shiny,
+    stats,
+    utils
+Suggests:
+    DBI,
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0),
+    withr
+VignetteBuilder: knitr
+Remotes:
+    github::Gwstat/shinyformtools
+Config/roxygen2/version: 8.1.0

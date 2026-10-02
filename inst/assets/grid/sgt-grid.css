@@ -1,0 +1,61 @@
+.sgt-grid-input table.sgt-grid {
+  border-collapse: collapse;
+  width: auto;
+}
+.sgt-grid-input table.sgt-grid th,
+.sgt-grid-input table.sgt-grid td {
+  border: 1px solid #dee2e6;
+  padding: 2px 6px;
+  vertical-align: middle;
+}
+.sgt-grid-input table.sgt-grid th {
+  background: #f8f9fa;
+  font-weight: 600;
+  text-align: center;
+}
+.sgt-grid-input table.sgt-grid th.sgt-grid-row-label,
+.sgt-grid-input table.sgt-grid td.sgt-grid-row-label {
+  text-align: left;
+  white-space: nowrap;
+}
+.sgt-grid-input td.sgt-grid-cell-wrap {
+  position: relative;
+  padding: 0;
+}
+.sgt-grid-input input.sgt-grid-cell {
+  width: 6.5em;
+  border: 0;
+  padding: 4px 6px;
+  text-align: right;
+  background: transparent;
+  font: inherit;
+}
+.sgt-grid-input input.sgt-grid-cell:focus {
+  outline: 2px solid #0d6efd;
+  outline-offset: -2px;
+  background: #fff;
+}
+.sgt-grid-input input.sgt-grid-cell.sgt-grid-filled {
+  font-weight: 600;
+}
+.sgt-grid-input tr.sgt-grid-row-filled td.sgt-grid-row-label {
+  font-weight: 600;
+}
+.sgt-grid-input .sgt-grid-hint {
+  position: absolute;
+  right: 6px;
+  top: -0.35em;
+  font-size: 0.7em;
+  color: #9aa0a6;
+  font-style: italic;
+  pointer-events: none;
+}
+.sgt-grid-input td.sgt-grid-sum,
+.sgt-grid-input th.sgt-grid-sum {
+  text-align: right;
+  color: #6c757d;
+  min-width: 3em;
+}
+.sgt-grid-input tfoot td {
+  background: #f8f9fa;
+}

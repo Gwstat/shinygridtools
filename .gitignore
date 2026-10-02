@@ -1,0 +1,23 @@
+.Rproj.user
+.vscode/
+.claude/
+.ai/
+CLAUDE.md
+
+# R session artefacts
+.Rhistory
+.RData
+.DS_Store
+*.Rcheck/
+*.tar.gz
+
+# Database artefacts (preventive; none are committed)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.duckdb
+*.duckdb.wal
+*.db
+tests/testthat/_problems/
+/doc/
+/Meta/
